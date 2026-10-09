@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: secure-devsecops-config
+  namespace: production
+  labels:
+    app.kubernetes.io/name: secure-devsecops-service
+data:
+  LOG_LEVEL: "info"
+  SECURITY_AUDIT_ENABLED: "true"

@@ -1,0 +1,60 @@
+services:
+  # ----------------------------------------------------------------------------
+  # Secure Microservice Application
+  # ----------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: secure-devsecops-service
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped
+    networks:
+      - devsecops-net
+
+  # ----------------------------------------------------------------------------
+  # Local SonarQube Server for SAST Testing
+  # ----------------------------------------------------------------------------
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: devsecops-sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_JDBC_USERNAME=sonar
+      - SONAR_JDBC_PASSWORD=sonar_secure_pwd
+      - SONAR_JDBC_URL=jdbc:postgresql://sonar-db:5432/sonar
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    depends_on:
+      - sonar-db
+    networks:
+      - devsecops-net
+
+  sonar-db:
+    image: postgres:15-alpine
+    container_name: devsecops-sonar-db
+    environment:
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar_secure_pwd
+      - POSTGRES_DB=sonar
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - devsecops-net
+
+networks:
+  devsecops-net:
+    driver: bridge
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  postgres_data:

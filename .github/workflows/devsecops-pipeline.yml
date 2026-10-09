@@ -1,0 +1,277 @@
+name: DevSecOps Secure CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: devsecops-org/secure-devsecops-service
+  IMAGE_TAG: ${{ github.sha }}
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+jobs:
+  # ============================================================================
+  # STAGE 1: Build & Unit Test
+  # ============================================================================
+  build-and-test:
+    name: 1. Build & Unit Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full git history required for SonarQube
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Application Dependencies
+        run: npm ci
+
+      - name: Run Unit Tests & Collect Code Coverage
+        run: npm run test:ci
+
+      - name: Archive Test & Coverage Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ============================================================================
+  # STAGE 2: SAST & Quality Gate (SonarQube)
+  # ============================================================================
+  sonarqube-sast:
+    name: 2. SonarQube SAST & Quality Gate
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Code Coverage Report
+        uses: actions/download-artifact@v4
+        with:
+          name: code-coverage-report
+          path: coverage/
+
+      - name: Run SonarQube Scanner
+        uses: sonarsource/sonarqube-scan-action@v3
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=secure-devsecops-service
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.qualitygate.wait=true
+
+      - name: Check SonarQube Quality Gate Status
+        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ============================================================================
+  # STAGE 3: Docker Build, Trivy Vulnerability & Secret Scan, SBOM Generation
+  # ============================================================================
+  docker-and-trivy:
+    name: 3. Docker Build, Trivy Scan & SBOM
+    needs: sonarqube-sast
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Container Image Locally
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+                       -t ${{ env.IMAGE_NAME }}:latest .
+
+      - name: Trivy Secrets Scan (Repo & Layers)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          security-checks: 'secret'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      - name: Trivy Image CVE Vulnerability Scan (Security Gate)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}'
+          format: 'table'
+          exit-code: '1' # Fails the pipeline on CRITICAL vulnerabilities
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Generate Software Bill of Materials (SBOM) - CycloneDX JSON
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}'
+          format: 'cyclonedx'
+          output: 'sbom.cdx.json'
+
+      - name: Archive SBOM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          retention-days: 14
+
+  # ============================================================================
+  # STAGE 4: Software Composition Analysis (Snyk SCA)
+  # ============================================================================
+  snyk-sca:
+    name: 4. Snyk SCA Dependency Security
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Run Snyk Open Source Dependency Scan
+        uses: snyk/actions/node@master
+        continue-on-error: false
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --json-file-output=snyk-report.json
+
+      - name: Upload Snyk Security Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snyk-security-report
+          path: snyk-report.json
+
+  # ============================================================================
+  # STAGE 5: IaC Scanning (Checkov) & Policy as Code (OPA / Conftest)
+  # ============================================================================
+  iac-and-opa-governance:
+    name: 5. Checkov IaC & OPA Conftest Policies
+    needs: [docker-and-trivy, snyk-sca]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov IaC Security Scanner
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: '.'
+          framework: 'kubernetes,dockerfile'
+          output_format: 'cli,json'
+          output_file_path: 'reports/checkov'
+          soft_fail: false
+
+      - name: Install Conftest (OPA Parser)
+        run: |
+          CONFTEST_VERSION=$(curl -s "https://api.github.com/repos/open-policy-agent/conftest/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          curl -LO "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          tar xzf "conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          sudo mv conftest /usr/local/bin/
+
+      - name: Evaluate OPA Policy as Code on Kubernetes Manifests
+        run: |
+          echo "Running OPA Conftest evaluation against policy/k8s_security.rego..."
+          conftest test -p policy/k8s_security.rego k8s/
+
+      - name: Evaluate OPA Policy as Code on Dockerfile
+        run: |
+          echo "Running OPA Conftest evaluation against policy/dockerfile_security.rego..."
+          conftest test -p policy/dockerfile_security.rego Dockerfile
+
+  # ============================================================================
+  # STAGE 6: Secure Deployment Gate
+  # ============================================================================
+  deploy-staging:
+    name: 6. Staging Deployment Gate
+    needs: iac-and-opa-governance
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Dry-Run Kubernetes Manifest Verification
+        run: |
+          echo "[DEPLOY] Validating Kubernetes manifests prior to rollout..."
+          sed -i 's|ghcr.io/devsecops-org/secure-devsecops-service:1.0.0|${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}|g' k8s/deployment.yaml
+          cat k8s/deployment.yaml | grep "image:"
+
+      - name: Execute Deployment
+        run: |
+          echo "[DEPLOY] Simulated secure deployment to target cluster..."
+          echo "Status: SUCCESS. Revision: ${{ github.sha }}"
+
+  # ============================================================================
+  # STAGE 7: Slack Notifications
+  # ============================================================================
+  slack-notifications:
+    name: 7. Slack Audit & Alerts
+    needs: [build-and-test, sonarqube-sast, docker-and-trivy, snyk-sca, iac-and-opa-governance, deploy-staging]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack Webhook Notification
+        if: env.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          payload: |
+            {
+              "text": "DevSecOps Pipeline Execution Status: ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🛡️ DevSecOps Pipeline Execution Report"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Repository:*\n${{ github.repository }}" },
+                    { "type": "mrkdwn", "text": "*Branch:*\n${{ github.ref_name }}" },
+                    { "type": "mrkdwn", "text": "*Commit:*\n`${{ github.sha }}`" },
+                    { "type": "mrkdwn", "text": "*Author:*\n${{ github.actor }}" }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Security Gates Passed:*\n• SonarQube SAST & Quality Gate\n• Trivy Container & Secret Scan\n• CycloneDX SBOM Generated\n• Snyk SCA Dependency Audit\n• Checkov IaC Verification\n• OPA Conftest Policy as Code"
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": { "type": "plain_text", "text": "View Workflow Run" },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

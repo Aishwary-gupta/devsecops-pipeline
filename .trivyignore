@@ -1,0 +1,7 @@
+# ==============================================================================
+# Trivy Vulnerability & Secret Scanner Exception Rules
+# Place CVEs here only with an approved Security Exception Waiver & Expiry Date
+# Format: CVE-YYYY-XXXXX
+# ==============================================================================
+# Example:
+# CVE-2023-0000 # Approved waiver: low severity internal tool, expires 2026-12-31

@@ -1,0 +1,10 @@
+# ==============================================================================
+# Snyk Security Policy Configuration
+# Used for Software Composition Analysis (SCA) and Open Source Vulnerabilities
+# ==============================================================================
+version: v1.25.0
+ignore: {}
+patch: {}
+language-settings:
+  javascript:
+    include-dev: false

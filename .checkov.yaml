@@ -1,0 +1,28 @@
+# ==============================================================================
+# Checkov Infrastructure as Code (IaC) Scanner Configuration
+# Scans Kubernetes manifests, Dockerfile, and configurations for misconfigurations
+# ==============================================================================
+directory:
+  - k8s
+  - .
+
+framework:
+  - kubernetes
+  - dockerfile
+
+compact: true
+quiet: false
+soft-fail: false
+hard-fail-on:
+  - HIGH
+  - CRITICAL
+
+output:
+  - cli
+  - json
+
+output-file-path: reports/checkov
+
+skip-path:
+  - node_modules
+  - tests
