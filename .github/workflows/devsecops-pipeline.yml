@@ -71,7 +71,8 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=secure-devsecops-service
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION || 'aishwary-gupta' }}
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY || 'secure-devsecops-service' }}
             -Dsonar.sources=src
             -Dsonar.tests=tests
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
@@ -107,7 +108,7 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          security-checks: 'secret'
+          scanners: 'secret'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
 
@@ -183,7 +184,7 @@ jobs:
 
       - name: Install Conftest (OPA Parser)
         run: |
-          CONFTEST_VERSION=$(curl -s "https://api.github.com/repos/open-policy-agent/conftest/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          CONFTEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
           curl -LO "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
           tar xzf "conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
           sudo mv conftest /usr/local/bin/
@@ -213,7 +214,7 @@ jobs:
       - name: Dry-Run Kubernetes Manifest Verification
         run: |
           echo "[DEPLOY] Validating Kubernetes manifests prior to rollout..."
-          sed -i 's|ghcr.io/devsecops-org/secure-devsecops-service:1.0.0|${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}|g' k8s/deployment.yaml
+          sed -i 's|ghcr.io/devsecops-org/secure-devsecops-service:1.0.0|'"${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"'|g' k8s/deployment.yaml
           cat k8s/deployment.yaml | grep "image:"
 
       - name: Execute Deployment

@@ -30,9 +30,9 @@ function Run-Stage {
     Write-Host "----------------------------------------------------------" -ForegroundColor Yellow
     try {
         & $Action
-        Write-Host "✔ PASS: $Title" -ForegroundColor Green
+        Write-Host "[+] PASS: $Title" -ForegroundColor Green
     } catch {
-        Write-Host "✖ FAIL: $Title" -ForegroundColor Red
+        Write-Host "[-] FAIL: $Title" -ForegroundColor Red
         Write-Host "Error details: $_" -ForegroundColor Red
         if (Test-Path "$PSScriptRoot/notify-slack.ps1") {
             & "$PSScriptRoot/notify-slack.ps1" -Status "FAILED" -Details "Pipeline failed at: $Title`nError: $_"
@@ -167,5 +167,5 @@ Run-Stage "10. Slack Pipeline Notification Dispatch" {
 }
 
 Write-Host "`n==========================================================" -ForegroundColor Green
-Write-Host "   🎉 DEVSECOPS PIPELINE EXECUTION PASSED ALL GATES!     " -ForegroundColor Green
+Write-Host "   >>> DEVSECOPS PIPELINE EXECUTION PASSED ALL GATES! <<<" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green

@@ -23,7 +23,6 @@ RUN npm ci --ignore-scripts
 
 # Copy application source code
 COPY src/ ./src/
-COPY tests/ ./tests/
 
 # Prune devDependencies to keep only production artifacts
 RUN npm prune --production

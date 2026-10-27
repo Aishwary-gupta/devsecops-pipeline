@@ -77,11 +77,25 @@ describe('DevSecOps Service Unit & Integration Tests', () => {
   });
 
   describe('Error Handling Middleware', () => {
+    let consoleSpy;
+
+    beforeEach(() => {
+      consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
+
     it('should catch unhandled errors and return 500 without leaking stack traces', async () => {
       const res = await request(app).get('/api/test-error');
       expect(res.statusCode).toEqual(500);
       expect(res.body.error).toEqual('Internal Server Error');
       expect(res.body.code).toEqual('ERR_INTERNAL');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Handled application error:',
+        'Simulated internal error for coverage'
+      );
     });
   });
 

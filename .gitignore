@@ -33,3 +33,8 @@ snyk-report.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# Private Interview & Candidate Preparation Docs
+INTERVIEW_MASTER_GUIDE.md
+*INTERVIEW*
+
