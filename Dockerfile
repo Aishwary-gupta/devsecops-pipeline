@@ -38,9 +38,9 @@ LABEL org.opencontainers.image.title="secure-devsecops-service" \
       org.opencontainers.image.vendor="DevSecOps Platform Team" \
       org.opencontainers.image.licenses="MIT"
 
-# Security hardening: upgrade OS packages to latest patch levels
+# Security hardening: upgrade OS packages to latest patch levels and remove unused package managers
 RUN apk update && apk upgrade --no-cache && \
-    rm -rf /var/cache/apk/* /tmp/*
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /var/cache/apk/* /tmp/*
 
 WORKDIR /app
 

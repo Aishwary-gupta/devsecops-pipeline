@@ -121,6 +121,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+          trivyignores: '.trivyignore'
 
       - name: Generate Software Bill of Materials (SBOM) - CycloneDX JSON
         uses: aquasecurity/trivy-action@master

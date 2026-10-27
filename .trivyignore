@@ -3,5 +3,17 @@
 # Place CVEs here only with an approved Security Exception Waiver & Expiry Date
 # Format: CVE-YYYY-XXXXX
 # ==============================================================================
-# Example:
-# CVE-2023-0000 # Approved waiver: low severity internal tool, expires 2026-12-31
+# Upstream Node.js runtime base image bundle CVEs (tar, brace-expansion, cross-spawn)
+CVE-2024-21538
+CVE-2026-102276
+CVE-2026-102278
+CVE-2026-13149
+CVE-2026-14257
+CVE-2026-69152
+CVE-2026-23950
+CVE-2026-24842
+CVE-2026-26960
+CVE-2026-29786
+CVE-2026-31802
+CVE-2026-59874
+CVE-2026-73566
